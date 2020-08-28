@@ -69,7 +69,7 @@ public:
     {
         auto delta = std::chrono::duration_cast<TimeT>(m_end - m_start);
         m_history.push_back(delta);
-        return delta.count();
+        return (int)delta.count();
     }
 
     const std::vector<TimeT>& GetHistory() const
