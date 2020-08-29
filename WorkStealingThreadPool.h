@@ -8,70 +8,74 @@ class WorkStealingThreadPool
 {
 public:
 
-    explicit WorkStealingThreadPool(size_t threadCount = std::max(1u, std::thread::hardware_concurrency()));
-    ~WorkStealingThreadPool();
+    explicit WorkStealingThreadPool(const bool workSteal=true, size_t threadCount = std::max(1u, std::thread::hardware_concurrency()))
+    : myQueues{ threadCount }, myTryoutCount(workSteal ? 1 : 0) {
+        for (size_t index = 0; index != threadCount; ++index) {
+            if (workSteal) {
+                myThreads.emplace_back([this, index] { WorkStealRun(index); });
+            } else {
+                myThreads.emplace_back([this, index] { Run(index); });
+            }
+        }
+    }
+
+    ~WorkStealingThreadPool() {
+        for (auto& queue : myQueues) {
+            queue.setEnabled(false);
+        }
+        for (auto& thread : myThreads) {
+            thread.join();
+        }
+    }
 
     template<typename TaskT>
     auto ExecuteAsync(TaskT&& task) -> std::future<decltype(task())> {
-        const auto index = m_queueIndex++;
-        for (size_t n = 0; n != m_queues.size()*m_tryoutCount; ++n)
-        {
-            // Here we need not to std::forward just copy task.
-            // Because if the universal reference of task has bound to an r-value reference 
-            // then std::forward will have the same effect as std::move and thus task is not required to contain a valid task. 
-            // Universal reference must only be std::forward'ed a exactly zero or one times.
-            bool success = false;
-            auto result = m_queues[(index + n) % m_queues.size()].tryPush(task, success); 
+        const auto index = myQueueIndex++;
+        if (myTryoutCount > 0) {
+            for (size_t n = 0; n != myQueues.size() * myTryoutCount; ++n) {
+                // Here we need not to std::forward just copy task.
+                // Because if the universal reference of task has bound to an r-value reference 
+                // then std::forward will have the same effect as std::move and thus task is not required to contain a valid task. 
+                // Universal reference must only be std::forward'ed a exactly zero or one times.
+                bool success = false;
+                auto result = myQueues[(index + n) % myQueues.size()].tryPush(task, success); 
 
-            if (success)
-                return std::move(result);
+                if (success) {
+                    return std::move(result);
+                }
+            }
         }
-        return m_queues[index % m_queues.size()].push(std::forward<TaskT>(task));
+        return myQueues[index % myQueues.size()].push(std::forward<TaskT>(task));
     }
 
 private:
-
-    void Run(size_t queueIndex);
-
-    std::vector<TaskQueue> m_queues;
-    std::atomic<size_t>    m_queueIndex{ 0 };
-    const size_t m_tryoutCount{ 1 };
-
-    std::vector<std::thread> m_threads;
-};
-
-WorkStealingThreadPool::WorkStealingThreadPool(size_t threadCount)
-    : m_queues{ threadCount }
-{
-    for (size_t index = 0; index != threadCount; ++index)
-        m_threads.emplace_back([this, index] { Run(index); });
-}
-
-WorkStealingThreadPool::~WorkStealingThreadPool()
-{
-   const bool finishTasks = false;
-    
-    for (auto& queue : m_queues)
-        queue.setEnabled(finishTasks);
-
-    for (auto& thread : m_threads)
-        thread.join();
-}
-
-void WorkStealingThreadPool::Run(size_t queueIndex)
-{
-    while (m_queues[queueIndex].isEnabled())
-    {
-        TaskQueue::TaskPtrType task;
-        for (size_t n = 0; n != m_queues.size()*m_tryoutCount; ++n)
-        {
-            if (m_queues[(queueIndex + n) % m_queues.size()].tryPop(task))
-                break;
+    void Run(size_t queueIndex) {
+        while (myQueues[queueIndex].isEnabled()) {
+            TaskQueue::TaskPtrType task;
+            if (myQueues[queueIndex].waitAndPop(task)) {
+                (*task)();
+            }
         }
-
-        if (!task && !m_queues[queueIndex].waitAndPop(task))
-            return;
-
-        (*task)();
     }
-}
+
+    void WorkStealRun(size_t queueIndex) {
+        while (myQueues[queueIndex].isEnabled()) {
+            TaskQueue::TaskPtrType task;
+            for (size_t n = 0; n != myQueues.size()*myTryoutCount; ++n) {
+                if (myQueues[(queueIndex + n) % myQueues.size()].tryPop(task)) {
+                    break;
+                }
+            }
+            if (!task && !myQueues[queueIndex].waitAndPop(task)) {
+                return;
+            }
+            (*task)();
+        }
+    }
+
+private:
+    std::vector<TaskQueue> myQueues;
+    std::atomic<size_t>    myQueueIndex{ 0 };
+    const size_t myTryoutCount;
+    std::vector<std::thread> myThreads;
+};

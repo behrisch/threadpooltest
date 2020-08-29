@@ -1,10 +1,8 @@
 #include "TestUtilities.h"
-#include "SingleQueueThreadPool.h"
-#include "MultiQueueThreadPool.h"
 #include "WorkStealingThreadPool.h"
 
-template<class TaskSystemT>
-void Test_TaskResultIsAsExpected(TaskSystemT&& taskSystem = TaskSystemT{})
+template<bool workSteal>
+void Test_TaskResultIsAsExpected(WorkStealingThreadPool&& taskSystem = WorkStealingThreadPool(workSteal))
 {
     constexpr size_t taskCount = 10000;
 
@@ -17,8 +15,8 @@ void Test_TaskResultIsAsExpected(TaskSystemT&& taskSystem = TaskSystemT{})
         TEST_ASSERT(i*i == results[i].get());
 }
 
-template<class TaskSystemT>
-void Test_RandomTaskExecutionTime(TaskSystemT&& taskSystem = TaskSystemT{})
+template<bool workSteal>
+void Test_RandomTaskExecutionTime(WorkStealingThreadPool&& taskSystem = WorkStealingThreadPool(workSteal))
 {
     constexpr size_t taskCount = 10000;
 
@@ -31,8 +29,8 @@ void Test_RandomTaskExecutionTime(TaskSystemT&& taskSystem = TaskSystemT{})
         result.wait();
 }
 
-template<class TaskSystemT>
-void Test_1nsTaskExecutionTime(TaskSystemT&& taskSystem = TaskSystemT{})
+template<bool workSteal>
+void Test_1nsTaskExecutionTime(WorkStealingThreadPool&& taskSystem = WorkStealingThreadPool(workSteal))
 {
     constexpr size_t taskCount = 10000;
     std::vector<std::future<void>> results;
@@ -44,8 +42,8 @@ void Test_1nsTaskExecutionTime(TaskSystemT&& taskSystem = TaskSystemT{})
         result.wait();
 }
 
-template<class TaskSystemT>
-void Test_100msTaskExecutionTime(TaskSystemT&& taskSystem = TaskSystemT{})
+template<bool workSteal>
+void Test_100msTaskExecutionTime(WorkStealingThreadPool&& taskSystem = WorkStealingThreadPool(workSteal))
 {
     constexpr size_t taskCount = 10;
     std::vector<std::future<void>> results;
@@ -57,8 +55,8 @@ void Test_100msTaskExecutionTime(TaskSystemT&& taskSystem = TaskSystemT{})
         result.wait();
 }
 
-template<class TaskSystemT>
-void Test_EmptyTask(TaskSystemT&& taskSystem = TaskSystemT{})
+template<bool workSteal>
+void Test_EmptyTask(WorkStealingThreadPool&& taskSystem = WorkStealingThreadPool(workSteal))
 {
     constexpr size_t taskCount = 10000;
 
@@ -71,8 +69,8 @@ void Test_EmptyTask(TaskSystemT&& taskSystem = TaskSystemT{})
         result.wait();
 }
 
-template<class TaskSystemT, class TaskT>
-void RepeatTask(TaskSystemT&& taskSystem, TaskT&& task, size_t times)
+template<class TaskT>
+void RepeatTask(WorkStealingThreadPool& taskSystem, TaskT&& task, size_t times)
 {
     std::vector<std::future<void>> results;
 
@@ -87,8 +85,8 @@ void RepeatTask(TaskSystemT&& taskSystem, TaskT&& task, size_t times)
         result.wait();
 }
 
-template<class TaskSystemT>
-void Test_MultipleTaskProducers(TaskSystemT&& taskSystem = TaskSystemT{})
+template<bool workSteal>
+void Test_MultipleTaskProducers(WorkStealingThreadPool&& taskSystem = WorkStealingThreadPool(workSteal))
 {
     constexpr size_t taskCount = 10000;
 
@@ -109,9 +107,8 @@ int main()
     std::cout << "==========================================" << std::endl;
     std::cout << "             FUNCTIONAL TESTS             " << std::endl;
     std::cout << "==========================================" << std::endl;
-    DO_TEST(Test_TaskResultIsAsExpected<SingleQueueThreadPool>);
-    DO_TEST(Test_TaskResultIsAsExpected<MultiQueueThreadPool>);
-    DO_TEST(Test_TaskResultIsAsExpected<WorkStealingThreadPool>);
+    DO_TEST(Test_TaskResultIsAsExpected<false>);
+    DO_TEST(Test_TaskResultIsAsExpected<true>);
     std::cout << std::endl;
 
     std::cout << "==========================================" << std::endl;
@@ -120,29 +117,24 @@ int main()
     std::cout << "Number of cores: " << std::thread::hardware_concurrency() << std::endl;
     constexpr size_t NumOfRuns = 10;
     std::cout << std::endl;
-    DO_BENCHMARK_TEST_WITH_DESCRIPTION("thread pool based on single task queue ", NumOfRuns, Test_RandomTaskExecutionTime<SingleQueueThreadPool>);
-    DO_BENCHMARK_TEST_WITH_DESCRIPTION("thread pool based on multiple task queues", NumOfRuns, Test_RandomTaskExecutionTime<MultiQueueThreadPool>);
-    DO_BENCHMARK_TEST_WITH_DESCRIPTION("thread pool based on work stealing queue ", NumOfRuns, Test_RandomTaskExecutionTime<WorkStealingThreadPool>);
+    DO_BENCHMARK_TEST_WITH_DESCRIPTION("thread pool based on multiple task queues", NumOfRuns, Test_RandomTaskExecutionTime<false>);
+    DO_BENCHMARK_TEST_WITH_DESCRIPTION("thread pool based on work stealing queue ", NumOfRuns, Test_RandomTaskExecutionTime<true>);
     std::cout << std::endl;
 
-    DO_BENCHMARK_TEST_WITH_DESCRIPTION("thread pool based on single task queue ", NumOfRuns, Test_1nsTaskExecutionTime<SingleQueueThreadPool>);
-    DO_BENCHMARK_TEST_WITH_DESCRIPTION("thread pool based on multiple task queues", NumOfRuns, Test_1nsTaskExecutionTime<MultiQueueThreadPool>);
-    DO_BENCHMARK_TEST_WITH_DESCRIPTION("thread pool based on work stealing queue ", NumOfRuns, Test_1nsTaskExecutionTime<WorkStealingThreadPool>);
+    DO_BENCHMARK_TEST_WITH_DESCRIPTION("thread pool based on multiple task queues", NumOfRuns, Test_1nsTaskExecutionTime<false>);
+    DO_BENCHMARK_TEST_WITH_DESCRIPTION("thread pool based on work stealing queue ", NumOfRuns, Test_1nsTaskExecutionTime<true>);
     std::cout << std::endl;
 
-    DO_BENCHMARK_TEST_WITH_DESCRIPTION("thread pool based on single task queue ", NumOfRuns, Test_100msTaskExecutionTime<SingleQueueThreadPool>);
-    DO_BENCHMARK_TEST_WITH_DESCRIPTION("thread pool based on multiple task queues", NumOfRuns, Test_100msTaskExecutionTime<MultiQueueThreadPool>);
-    DO_BENCHMARK_TEST_WITH_DESCRIPTION("thread pool based on work stealing queue ", NumOfRuns, Test_100msTaskExecutionTime<WorkStealingThreadPool>);
+    DO_BENCHMARK_TEST_WITH_DESCRIPTION("thread pool based on multiple task queues", NumOfRuns, Test_100msTaskExecutionTime<false>);
+    DO_BENCHMARK_TEST_WITH_DESCRIPTION("thread pool based on work stealing queue ", NumOfRuns, Test_100msTaskExecutionTime<true>);
     std::cout << std::endl;
 
-    DO_BENCHMARK_TEST_WITH_DESCRIPTION("thread pool based on single task queue ", NumOfRuns, Test_EmptyTask<SingleQueueThreadPool>);
-    DO_BENCHMARK_TEST_WITH_DESCRIPTION("thread pool based on multiple task queues", NumOfRuns, Test_EmptyTask<MultiQueueThreadPool>);
-    DO_BENCHMARK_TEST_WITH_DESCRIPTION("thread pool based on work stealing queue ", NumOfRuns, Test_EmptyTask<WorkStealingThreadPool>);
+    DO_BENCHMARK_TEST_WITH_DESCRIPTION("thread pool based on multiple task queues", NumOfRuns, Test_EmptyTask<false>);
+    DO_BENCHMARK_TEST_WITH_DESCRIPTION("thread pool based on work stealing queue ", NumOfRuns, Test_EmptyTask<true>);
     std::cout << std::endl;
 
-    DO_BENCHMARK_TEST_WITH_DESCRIPTION("thread pool based on single task queue ", NumOfRuns, Test_MultipleTaskProducers<SingleQueueThreadPool>);
-    DO_BENCHMARK_TEST_WITH_DESCRIPTION("thread pool based on multiple task queues", NumOfRuns, Test_MultipleTaskProducers<MultiQueueThreadPool>);
-    DO_BENCHMARK_TEST_WITH_DESCRIPTION("thread pool based on work stealing queue ", NumOfRuns, Test_MultipleTaskProducers<WorkStealingThreadPool>);
+    DO_BENCHMARK_TEST_WITH_DESCRIPTION("thread pool based on multiple task queues", NumOfRuns, Test_MultipleTaskProducers<false>);
+    DO_BENCHMARK_TEST_WITH_DESCRIPTION("thread pool based on work stealing queue ", NumOfRuns, Test_MultipleTaskProducers<true>);
     std::cout << std::endl;
 
     return 0;
