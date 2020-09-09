@@ -97,12 +97,12 @@ const auto history = stopWatch.GetHistory(); \
 std::cout << " ) => " << (std::accumulate(history.begin(), history.end(), StopWatchMs::TimeRep{}) / repeatTimes).count() << " ms" << std::endl; \
 }
 
-#define DO_BENCHMARK_TEST_WITH_DESCRIPTION(description, repeatTimes, test) { \
+#define DO_BENCHMARK_TEST_WITH_DESCRIPTION(description, repeatTimes, test, pool) { \
 std::cout << " - Benchmark test ( " << #test << ", description: " << description; \
 StopWatchMs stopWatch; \
 for (size_t n = 0; n < repeatTimes; ++n) { \
     stopWatch.Start(); \
-    test(); \
+    test(pool); \
     stopWatch.Stop(); \
 } \
 const auto history = stopWatch.GetHistory(); \
@@ -116,11 +116,11 @@ if (!(expr)) { \
     throw std::runtime_error(ss.str()); \
 }
 
-#define DO_TEST(test)  { \
-std::cout << " - Test ( " << #test; \
+#define DO_TEST(test, pool)  { \
+std::cout << " - Test ( " << #test << " " << #pool; \
 try \
 { \
-    test(); \
+    test(pool); \
 } \
 catch (const std::exception& e) \
 { \

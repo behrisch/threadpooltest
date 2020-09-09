@@ -4,18 +4,20 @@
 #include <algorithm>
 #include <thread>
 
-class WorkStealingThreadPool
-{
+template<typename CONTEXT=int>
+class WorkStealingThreadPool {
 public:
 
-    explicit WorkStealingThreadPool(const bool workSteal=true, size_t threadCount = std::max(1u, std::thread::hardware_concurrency()))
-    : myQueues{ threadCount }, myTryoutCount(workSteal ? 1 : 0) {
-        for (size_t index = 0; index != threadCount; ++index) {
+    explicit WorkStealingThreadPool(const bool workSteal, std::vector<CONTEXT>& context)
+    : myQueues{ context.size() }, myTryoutCount(workSteal ? 1 : 0) {
+        size_t index = 0;
+        for (CONTEXT& c : context) {
             if (workSteal) {
-                myThreads.emplace_back([this, index] { WorkStealRun(index); });
+                myThreads.emplace_back([this, index, c] () mutable { WorkStealRun(index, c); });
             } else {
-                myThreads.emplace_back([this, index] { Run(index); });
+                myThreads.emplace_back([this, index, c] () mutable { Run(index, c); });
             }
+            index++;
         }
     }
 
@@ -29,7 +31,7 @@ public:
     }
 
     template<typename TaskT>
-    auto ExecuteAsync(TaskT&& task) -> std::future<decltype(task())> {
+    auto ExecuteAsync(TaskT&& task) -> std::future<decltype(task(std::declval<CONTEXT>()))> {
         const auto index = myQueueIndex++;
         if (myTryoutCount > 0) {
             for (size_t n = 0; n != myQueues.size() * myTryoutCount; ++n) {
@@ -49,18 +51,18 @@ public:
     }
 
 private:
-    void Run(size_t queueIndex) {
+    void Run(size_t queueIndex, CONTEXT& context) {
         while (myQueues[queueIndex].isEnabled()) {
-            TaskQueue::TaskPtrType task;
+            typename TaskQueue<CONTEXT>::TaskPtrType task;
             if (myQueues[queueIndex].waitAndPop(task)) {
-                (*task)();
+                task->exec(context);
             }
         }
     }
 
-    void WorkStealRun(size_t queueIndex) {
+    void WorkStealRun(size_t queueIndex, CONTEXT& context) {
         while (myQueues[queueIndex].isEnabled()) {
-            TaskQueue::TaskPtrType task;
+            typename TaskQueue<CONTEXT>::TaskPtrType task;
             for (size_t n = 0; n != myQueues.size()*myTryoutCount; ++n) {
                 if (myQueues[(queueIndex + n) % myQueues.size()].tryPop(task)) {
                     break;
@@ -69,12 +71,12 @@ private:
             if (!task && !myQueues[queueIndex].waitAndPop(task)) {
                 return;
             }
-            (*task)();
+            task->exec(context);
         }
     }
 
 private:
-    std::vector<TaskQueue> myQueues;
+    std::vector<TaskQueue<CONTEXT> > myQueues;
     std::atomic<size_t>    myQueueIndex{ 0 };
     const size_t myTryoutCount;
     std::vector<std::thread> myThreads;
